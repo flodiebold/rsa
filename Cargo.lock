@@ -248,6 +248,7 @@ version = "0.1.0"
 dependencies = [
  "glass_pumpkin",
  "num-bigint",
+ "num-integer",
  "serde",
  "serde_json",
 ]

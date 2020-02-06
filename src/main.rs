@@ -1,19 +1,79 @@
 
 use std::{error::Error, io::{Read, stdin, stdout, Write}};
 use num_bigint::BigUint;
+use serde::{Deserialize, Serialize};
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let mut data = Vec::new();
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublicKey {
+    e: BigUint,
+    n: BigUint,
+}
 
-    stdin().lock().read_to_end(&mut data)?;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PrivateKey {
+    d: BigUint,
+}
 
-    let message = BigUint::from_bytes_be(&data);
+fn rsa_keygen() -> (PublicKey, PrivateKey) {
+    todo!()
+}
+
+fn rsa_encrypt(message: &[u8], key: PublicKey) -> Vec<u8> {
+    let message = BigUint::from_bytes_be(&message);
 
     let encrypted = message;
 
     let data = encrypted.to_bytes_be();
+    todo!()
+}
 
-    stdout().lock().write_all(&data)?;
+fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey)) -> Vec<u8> {
+    todo!()
+}
+
+fn save_key(key_pair: (PublicKey, PrivateKey)) -> Result<(), Box<dyn Error>> {
+    let file = std::fs::File::create("./private_key.json")?;
+    serde_json::to_writer(file, &key_pair.1)?;
+    let file = std::fs::File::create("./public_key.json")?;
+    serde_json::to_writer(file, &key_pair.0)?;
+    Ok(())
+}
+
+fn load_key() -> Result<(PublicKey, PrivateKey), Box<dyn Error>> {
+    let file = std::fs::File::open("./private_key.json")?;
+    let private_key = serde_json::from_reader(file)?;
+    let file = std::fs::File::open("./public_key.json")?;
+    let public_key = serde_json::from_reader(file)?;
+    Ok((public_key, private_key))
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    match std::env::args().skip(1).next() {
+        Some(s) if &s == "keygen" => {
+            eprintln!("Generating highly secure key...");
+            let key_pair = rsa_keygen();
+            save_key(key_pair)?;
+        }
+        Some(s) if &s == "encrypt" || &s == "decrypt" => {
+            let mut data = Vec::new();
+
+            stdin().lock().read_to_end(&mut data)?;
+
+            let key_pair = load_key()?;
+
+            let result = if s == "encrypt" {
+                rsa_encrypt(&data, key_pair.0)
+            } else {
+                rsa_decrypt(&data, key_pair)
+            };
+
+            stdout().lock().write_all(&result)?;
+        }
+        _ => {
+            eprintln!("Please specify one of keygen, encrypt or decrypt.");
+            std::process::exit(1);
+        }
+    }
 
     Ok(())
 }

@@ -66,6 +66,16 @@ fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey
     data
 }
 
+fn crack_1(message: &[u8], _public_key: PublicKey) -> Vec<u8> {
+    let message = BigUint::from_bytes_be(&message);
+
+    let decrypted = message.nth_root(3);
+
+    let data = decrypted.to_bytes_be();
+
+    data
+}
+
 fn save_key(key_pair: (PublicKey, PrivateKey)) -> Result<(), Box<dyn Error>> {
     let file = std::fs::File::create("./private_key.json")?;
     serde_json::to_writer(file, &key_pair.1)?;
@@ -108,6 +118,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 rsa_decrypt(&data, key_pair)
             };
+
+            stdout().lock().write_all(&result)?;
+        }
+        Some(s) if &s == "crack_1" => {
+            let mut data = Vec::new();
+
+            stdin().lock().read_to_end(&mut data)?;
+
+            let key = load_public_key()?;
+            let result = crack_1(&data, key);
 
             stdout().lock().write_all(&result)?;
         }

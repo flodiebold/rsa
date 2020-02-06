@@ -39,11 +39,31 @@ fn rsa_keygen() -> (PublicKey, PrivateKey) {
 }
 
 fn rsa_encrypt(message: &[u8], key: PublicKey) -> Vec<u8> {
-    todo!()
+    let message = BigUint::from_bytes_be(&message);
+
+    if message >= key.n {
+        panic!("message is too large!");
+    }
+
+    let encrypted = message.modpow(&key.e, &key.n);
+
+    let data = encrypted.to_bytes_be();
+
+    data
 }
 
 fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey)) -> Vec<u8> {
-    todo!()
+    let message = BigUint::from_bytes_be(&message);
+
+    if message >= public_key.n {
+        panic!("message is too large!");
+    }
+
+    let encrypted = message.modpow(&private_key.d, &public_key.n);
+
+    let data = encrypted.to_bytes_be();
+
+    data
 }
 
 fn save_key(key_pair: (PublicKey, PrivateKey)) -> Result<(), Box<dyn Error>> {
@@ -62,6 +82,12 @@ fn load_key() -> Result<(PublicKey, PrivateKey), Box<dyn Error>> {
     Ok((public_key, private_key))
 }
 
+fn load_public_key() -> Result<PublicKey, Box<dyn Error>> {
+    let file = std::fs::File::open("./public_key.json")?;
+    let public_key = serde_json::from_reader(file)?;
+    Ok(public_key)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     match std::env::args().skip(1).next() {
         Some(s) if &s == "keygen" => {
@@ -74,11 +100,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             stdin().lock().read_to_end(&mut data)?;
 
-            let key_pair = load_key()?;
-
             let result = if s == "encrypt" {
-                rsa_encrypt(&data, key_pair.0)
+                let key = load_public_key()?;
+                rsa_encrypt(&data, key)
             } else {
+                let key_pair = load_key()?;
+
                 rsa_decrypt(&data, key_pair)
             };
 

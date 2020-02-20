@@ -3,6 +3,7 @@ use std::{error::Error, io::{Read, stdin, stdout, Write}};
 use num_bigint::{BigInt, BigUint, Sign};
 use serde::{Deserialize, Serialize};
 use num_integer::Integer;
+use rand::Rng;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicKey {
@@ -19,6 +20,28 @@ fn modular_inverse(x: BigUint, m: BigUint) -> BigUint {
     let m = BigInt::from_biguint(Sign::Plus, m);
     let e = BigInt::from_biguint(Sign::Plus, x).extended_gcd(&m);
     e.x.to_biguint().or((m + e.x).to_biguint()).unwrap()
+}
+
+fn pkcs_pad(mut message: Vec<u8>, size: usize) -> Vec<u8> {
+    message.insert(0, 0);
+    for _ in 0..(size-2-message.len()) {
+        let mut b = rand::thread_rng().gen();
+        if b == 0 { b = 1; }
+        message.insert(0, b);
+    }
+    message.insert(0, 2);
+    // last byte 0 doesn't matter
+    message
+}
+
+fn pkcs_unpad(mut message: Vec<u8>) -> Result<Vec<u8>, ()> {
+    if message[0] != 2 {
+        return Err(());
+    }
+    let padding_len = message.iter().enumerate().filter(|(_, b)| **b == 0).next()
+        .ok_or(())?.0 + 1;
+    message.drain(0..padding_len);
+    Ok(message)
 }
 
 fn rsa_keygen() -> (PublicKey, PrivateKey) {
@@ -39,6 +62,8 @@ fn rsa_keygen() -> (PublicKey, PrivateKey) {
 }
 
 fn rsa_encrypt(message: &[u8], key: PublicKey) -> Vec<u8> {
+    let key_size = key.n.bits().div_ceil(&8);
+    let message = pkcs_pad(message.to_owned(), key_size);
     let message = BigUint::from_bytes_be(&message);
 
     if message >= key.n {
@@ -52,7 +77,7 @@ fn rsa_encrypt(message: &[u8], key: PublicKey) -> Vec<u8> {
     data
 }
 
-fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey)) -> Vec<u8> {
+fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey)) -> Result<Vec<u8>, ()> {
     let message = BigUint::from_bytes_be(&message);
 
     if message >= public_key.n {
@@ -63,7 +88,7 @@ fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey
 
     let data = encrypted.to_bytes_be();
 
-    data
+    pkcs_unpad(data)
 }
 
 fn crack_1(message: &[u8], _public_key: PublicKey) -> Vec<u8> {
@@ -116,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 let key_pair = load_key()?;
 
-                rsa_decrypt(&data, key_pair)
+                rsa_decrypt(&data, key_pair).map_err(|_| "Invalid PKCS padding")?
             };
 
             stdout().lock().write_all(&result)?;

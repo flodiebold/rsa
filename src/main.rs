@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use num_integer::Integer;
 use rand::Rng;
 
+mod bleichenbacher;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicKey {
     e: BigUint,
@@ -34,8 +36,8 @@ fn pkcs_pad(mut message: Vec<u8>, size: usize) -> Vec<u8> {
     message
 }
 
-fn pkcs_unpad(mut message: Vec<u8>) -> Result<Vec<u8>, ()> {
-    if message[0] != 2 {
+fn pkcs_unpad(mut message: Vec<u8>, size: usize) -> Result<Vec<u8>, ()> {
+    if message[0] != 2 || message.len() != size - 1 {
         return Err(());
     }
     let padding_len = message.iter().enumerate().filter(|(_, b)| **b == 0).next()
@@ -77,7 +79,8 @@ fn rsa_encrypt(message: &[u8], key: PublicKey) -> Vec<u8> {
     data
 }
 
-fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey)) -> Result<Vec<u8>, ()> {
+fn rsa_decrypt(message: &[u8], (public_key, private_key): &(PublicKey, PrivateKey)) -> Result<Vec<u8>, ()> {
+    let key_size = public_key.n.bits().div_ceil(&8);
     let message = BigUint::from_bytes_be(&message);
 
     if message >= public_key.n {
@@ -88,7 +91,7 @@ fn rsa_decrypt(message: &[u8], (public_key, private_key): (PublicKey, PrivateKey
 
     let data = encrypted.to_bytes_be();
 
-    pkcs_unpad(data)
+    pkcs_unpad(data, key_size)
 }
 
 fn crack_1(message: &[u8], _public_key: PublicKey) -> Vec<u8> {
@@ -141,7 +144,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 let key_pair = load_key()?;
 
-                rsa_decrypt(&data, key_pair).map_err(|_| "Invalid PKCS padding")?
+                rsa_decrypt(&data, &key_pair).map_err(|_| "Invalid PKCS padding")?
             };
 
             stdout().lock().write_all(&result)?;
@@ -153,6 +156,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let key = load_public_key()?;
             let result = crack_1(&data, key);
+
+            stdout().lock().write_all(&result)?;
+        }
+        Some(s) if &s == "bleichenbacher" => {
+            let mut data = Vec::new();
+
+            stdin().lock().read_to_end(&mut data)?;
+
+            let key = load_key()?;
+            let oracle = |msg: Vec<u8>| {
+                let result = rsa_decrypt(&msg, &key);
+
+                result.is_ok()
+            };
+
+            let result = bleichenbacher::bleichenbacher(&data, &key.0, &oracle);
 
             stdout().lock().write_all(&result)?;
         }
